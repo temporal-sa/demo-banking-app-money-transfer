@@ -22,7 +22,6 @@ with workflow.unsafe.imports_passed_through():
 
 @workflow.defn(dynamic=True)
 class AccountTransferWorkflowScenarios:
-
     BUG = "AccountTransferWorkflowRecoverableFailure"
     NEEDS_APPROVAL = "AccountTransferWorkflowHumanInLoop"
     ADVANCED_VISIBILITY = "AccountTransferWorkflowAdvancedVisibility"
@@ -61,6 +60,16 @@ class AccountTransferWorkflowScenarios:
         )
         await self.updateProgress(25, 1)
 
+        # Withdraw
+        self.upsertStep("Withdraw")
+        await workflow.execute_activity(
+            AccountTransferActivities.withdraw,
+            args=[idempotencyKey, input.amount, self.workflow_type],
+            start_to_close_timeout=self.start_to_close_timeout,
+            retry_policy=self.retry_policy,
+        )
+        await self.updateProgress(50, 3)
+
         if self.NEEDS_APPROVAL == self.workflow_type:
             logger.info(
                 f"Waiting on 'approveTransfer' Signal for workflow ID: {workflow.info().workflow_id}"
@@ -93,16 +102,6 @@ class AccountTransferWorkflowScenarios:
                     type="ApprovalTimeout",
                     non_retryable=True,
                 )
-
-        # Withdraw
-        self.upsertStep("Withdraw")
-        await workflow.execute_activity(
-            AccountTransferActivities.withdraw,
-            args=[idempotencyKey, input.amount, self.workflow_type],
-            start_to_close_timeout=self.start_to_close_timeout,
-            retry_policy=self.retry_policy,
-        )
-        await self.updateProgress(50, 3)
 
         if self.BUG == self.workflow_type:
             raise RuntimeError("Simulated bug - fix me!")
@@ -166,9 +165,7 @@ class AccountTransferWorkflowScenarios:
     def upsertStep(self, step: str) -> None:
         if self.ADVANCED_VISIBILITY == self.workflow_type:
             workflow.logger.info(f"Advanced visibility... On step: {step}")
-            workflow.upsert_search_attributes(
-                [self.WORKFLOW_STEP.value_set(step)]
-            )
+            workflow.upsert_search_attributes([self.WORKFLOW_STEP.value_set(step)])
 
     async def updateProgress(self, progress: int, sleep: int) -> None:
         await self.updateProgressStatus(progress, sleep, "running")
